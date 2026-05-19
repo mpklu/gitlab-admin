@@ -1,0 +1,18 @@
+# Pre-commit framework integration for the living-docs drift check.
+# See https://pre-commit.com for installation.
+#
+# Drop into your project's `.pre-commit-config.yaml` (or merge with
+# existing) and run `pre-commit install` once.
+
+repos:
+  - repo: local
+    hooks:
+      - id: living-docs-drift-check
+        name: Living Docs drift check
+        entry: scripts/drift-check
+        language: system
+        pass_filenames: false
+        always_run: true
+        # Diff working tree against last commit — matches what we're
+        # about to commit.
+        args: [--base-ref, HEAD]

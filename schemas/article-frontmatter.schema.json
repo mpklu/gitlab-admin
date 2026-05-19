@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mpklu/living-doc/schemas/article-frontmatter.schema.json",
+  "title": "Living-doc article frontmatter",
+  "description": "Schema for the YAML frontmatter at the top of every knowledge/**/*.md article. Co-locates metadata with content so the article itself is the source of truth (see knowledge/concepts/methodology/frontmatter-as-source-of-truth.md).",
+  "type": "object",
+  "required": ["title", "type", "area", "updated", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable article title. Shown in knowledge/index.md tables."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["concept", "connection", "meta"],
+      "description": "concept = standalone reference for one subject. connection = cross-cutting between concepts. meta = about the documentation system itself."
+    },
+    "area": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project-defined grouping. Drives directory layout under concepts/<area>/. Adopters define their own taxonomy (e.g., methodology | tooling | meta in this repo; mira | macpractice | providers in a typical adoptee)."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "ISO date (YYYY-MM-DD) of the last meaningful content update. Drift sweeps prioritize oldest first."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["thin", "mature", "deprecated"],
+      "description": "thin = first-draft, capture-first. mature = has survived a drift sweep without contradicting code. deprecated = superseded; kept for history."
+    },
+    "affects": {
+      "type": "array",
+      "description": "Glob patterns for code paths this article documents. Drives the article-mapping for drift checks (see affects-globs.md). Articles without affects are not subject to per-file drift checking but still appear in the index.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "load_bearing": {
+      "type": "boolean",
+      "description": "When true, accuracy is critical (auth flows, public APIs, config schemas). Drift checker treats these strictly (block on drift). Others lenient (warn). Defaults to false when omitted."
+    },
+    "references": {
+      "type": "array",
+      "description": "Explicit cross-links to other articles (paths relative to knowledge/). Validators detect orphans by walking the reference graph.",
+      "items": {
+        "type": "string",
+        "pattern": ".*\\.md$"
+      },
+      "uniqueItems": true
+    }
+  }
+}

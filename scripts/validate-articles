@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Local CLI wrapper for the article-frontmatter validator.
+
+Walks knowledge/**/*.md and verifies each article's YAML frontmatter
+against schemas/article-frontmatter.schema.json. See
+knowledge/concepts/methodology/frontmatter-as-source-of-truth.md.
+
+Usage:
+    validate-articles                            # human-readable report
+    validate-articles --json                     # machine-readable JSON
+    validate-articles --knowledge-dir docs/kb    # alt knowledge dir
+
+Exits 1 if any file has frontmatter errors; 0 otherwise.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+def _find_repo_root(start: Path) -> Path:
+    here = start.resolve()
+    while True:
+        if (here / "actions" / "drift-check" / "validate_articles.py").exists():
+            return here
+        if here.parent == here:
+            break
+        here = here.parent
+    raise SystemExit(
+        "validate-articles: could not locate "
+        "actions/drift-check/validate_articles.py by walking up from "
+        "this script."
+    )
+
+
+def main() -> int:
+    here = Path(__file__).resolve()
+    repo_root = _find_repo_root(here)
+    sys.path.insert(0, str(repo_root / "actions" / "drift-check"))
+    import validate_articles  # noqa: E402
+    return validate_articles.cli_main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Local CLI wrapper for the living-doc drift check.
+
+Wraps `actions/drift-check/drift_check.py` (the same code the GitHub
+Action runs) so contributors can verify the same-task rule before
+push, not just at PR time. See knowledge/concepts/methodology/local-vs-pr-enforcement.md
+for the design.
+
+Usage:
+    drift-check                                        # diffs against main
+    drift-check --base-ref origin/main                 # explicit base
+    drift-check --warn-only                            # exit 0 even on violations
+    drift-check --claude-md path/to/CLAUDE.md          # alt CLAUDE.md location
+    drift-check --knowledge-dir path/to/knowledge      # alt knowledge dir
+
+Run from any directory inside the repo. The wrapper resolves to the
+shipped check module via the repo root.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from `start` until we find an `actions/drift-check/` dir."""
+    here = start.resolve()
+    while True:
+        if (here / "actions" / "drift-check" / "drift_check.py").exists():
+            return here
+        if here.parent == here:
+            break
+        here = here.parent
+    raise SystemExit(
+        "drift-check: could not locate actions/drift-check/drift_check.py "
+        "by walking up from this script. The wrapper expects to live "
+        "under a repo that contains the living-docs Action source."
+    )
+
+
+def main() -> int:
+    here = Path(__file__).resolve()
+    repo_root = _find_repo_root(here)
+    sys.path.insert(0, str(repo_root / "actions" / "drift-check"))
+    import drift_check  # noqa: E402
+    return drift_check.cli_main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
