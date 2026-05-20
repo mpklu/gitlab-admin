@@ -95,6 +95,36 @@ def _member_payload(user_id, username, access_level, expires_at=None):
     }
 
 
+def _stub_projects_list_all(rsps, projects):
+    """Stub the `/api/v4/projects` endpoint that fetch.sync_all uses
+    after the groups walk to pick up personal-namespace projects."""
+    rsps.add(
+        responses.GET,
+        "https://gitlab.example.com/api/v4/projects",
+        json=projects,
+        status=200,
+        adding_headers={"X-Total-Pages": "1", "X-Next-Page": ""},
+    )
+
+
+def _personal_project_payload(id_, user_namespace_id, path):
+    """Project living under a user namespace (kind='user'), not a group."""
+    return {
+        "id": id_,
+        "namespace": {"id": user_namespace_id, "kind": "user"},
+        "path_with_namespace": path,
+        "name": path.split("/")[-1],
+        "default_branch": "main",
+        "visibility": "private",
+        "archived": False,
+        "last_activity_at": "2026-05-01T00:00:00Z",
+        "http_url_to_repo": f"https://gitlab.example.com/{path}.git",
+        "ssh_url_to_repo": f"git@gitlab.example.com:{path}.git",
+        "web_url": f"https://gitlab.example.com/{path}",
+        "description": None, "topics": [], "star_count": 0,
+    }
+
+
 def test_full_sync_writes_groups_projects_members(stubbed_gitlab, tmp_cache):
     g1 = _group_payload(1, "platform")
     g2 = _group_payload(2, "platform/services", parent_id=1)
@@ -113,6 +143,7 @@ def test_full_sync_writes_groups_projects_members(stubbed_gitlab, tmp_cache):
     _stub_members_all(stubbed_gitlab, "project", 101, [
         _member_payload(12, "bob", 40),
     ])
+    _stub_projects_list_all(stubbed_gitlab, [])  # no personal-namespace projects
 
     gl = client.get_client()
     fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
@@ -171,6 +202,7 @@ def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tm
         _member_payload(10, "alice", 40),
         _member_payload(10, "alice", 50),
     ])
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     gl = client.get_client()
     fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
@@ -205,6 +237,7 @@ def test_sync_skips_group_on_403_and_continues(stubbed_gitlab, tmp_cache):
         json={"message": "403 Forbidden"},
         status=403,
     )
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     messages: list[str] = []
     gl = client.get_client()
@@ -259,6 +292,7 @@ def test_sync_skips_project_already_seen_in_another_group(
     # call has no matching stub.
     _stub_project_get(stubbed_gitlab, shared)
     _stub_members_all(stubbed_gitlab, "project", 101, [])
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     gl = client.get_client()
     fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
@@ -281,6 +315,7 @@ def test_sync_calls_progress_callback_with_status(stubbed_gitlab, tmp_cache):
     ])
     _stub_project_get(stubbed_gitlab, _project_payload(101, 1, "platform/auth"))
     _stub_members_all(stubbed_gitlab, "project", 101, [])
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     messages: list[str] = []
     gl = client.get_client()
@@ -314,6 +349,7 @@ def test_sync_orphan_parent_id_becomes_top_level(stubbed_gitlab, tmp_cache):
     _stub_group_get(stubbed_gitlab, _group_payload(2, "lost-orphan", parent_id=99))
     _stub_members_all(stubbed_gitlab, "group", 2, [])
     _stub_group_projects(stubbed_gitlab, 2, [])
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     gl = client.get_client()
     fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
@@ -344,6 +380,7 @@ def test_sync_handles_subgroup_before_parent_in_api_response(
     _stub_members_all(stubbed_gitlab, "group", 1, [])
     _stub_group_projects(stubbed_gitlab, 2, [])
     _stub_group_projects(stubbed_gitlab, 1, [])
+    _stub_projects_list_all(stubbed_gitlab, [])
 
     gl = client.get_client()
     fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
@@ -351,3 +388,66 @@ def test_sync_handles_subgroup_before_parent_in_api_response(
     with cache.connect(tmp_cache) as conn:
         groups = cache.load_groups(conn)
     assert {g["full_path"] for g in groups} == {"platform", "platform/services"}
+
+
+def test_sync_picks_up_personal_namespace_projects(stubbed_gitlab, tmp_cache):
+    """Projects under a user namespace (e.g. `/kal/scratch`) are NOT
+    reachable via /api/v4/groups because user namespaces aren't groups.
+    The sync issues a separate /api/v4/projects listing after the
+    groups walk and picks up any project whose namespace.kind == 'user'."""
+    # One group with one project (covers the standard path).
+    g1 = _group_payload(1, "platform")
+    p_in_group = _project_payload(101, 1, "platform/auth")
+    _stub_groups_list(stubbed_gitlab, [g1])
+    _stub_group_get(stubbed_gitlab, g1)
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_group_projects(stubbed_gitlab, 1, [p_in_group])
+    _stub_project_get(stubbed_gitlab, p_in_group)
+    _stub_members_all(stubbed_gitlab, "project", 101, [])
+
+    # The all-projects listing returns BOTH the group-owned project
+    # (already seen — must be skipped via seen_project_ids) AND a
+    # personal-namespace project that the groups walk could never reach.
+    p_personal = _personal_project_payload(301, 999, "kal/scratch")
+    _stub_projects_list_all(stubbed_gitlab, [p_in_group, p_personal])
+
+    # The personal project needs its own get + members stubs (it's the
+    # first time we see it).
+    _stub_project_get(stubbed_gitlab, p_personal)
+    _stub_members_all(stubbed_gitlab, "project", 301, [
+        _member_payload(999, "kal", 50),
+    ])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        projects = cache.load_projects(conn)
+
+    paths = {p["path_with_namespace"] for p in projects}
+    assert paths == {"platform/auth", "kal/scratch"}
+
+    # The personal project has namespace_user_id set and namespace_group_id NULL.
+    personal_row = next(p for p in projects if p["path_with_namespace"] == "kal/scratch")
+    assert personal_row["namespace_user_id"] == 999
+    assert personal_row["namespace_group_id"] is None
+
+
+def test_sync_handles_only_personal_namespace_projects(stubbed_gitlab, tmp_cache):
+    """Edge case: the admin has access to user-namespace projects but
+    no groups (or no readable groups). The all-projects scan still
+    surfaces them."""
+    _stub_groups_list(stubbed_gitlab, [])  # zero groups
+
+    p_personal = _personal_project_payload(301, 999, "kal/scratch")
+    _stub_projects_list_all(stubbed_gitlab, [p_personal])
+    _stub_project_get(stubbed_gitlab, p_personal)
+    _stub_members_all(stubbed_gitlab, "project", 301, [])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        projects = cache.load_projects(conn)
+    assert len(projects) == 1
+    assert projects[0]["path_with_namespace"] == "kal/scratch"

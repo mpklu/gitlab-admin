@@ -210,6 +210,54 @@ def sync_all(
                         raise SyncFailed(f"failed to list members for project {p.path_with_namespace}: {exc}") from exc
                     _write_members_deduped(conn, "project", p.id, p_members)
 
+            # Personal-namespace projects: projects under a *user*
+            # namespace (e.g. /kal/scratch) aren't reachable via the
+            # /groups endpoint because user namespaces aren't groups.
+            # List all visible projects and pick up the ones whose
+            # namespace.kind == "user" that we haven't seen yet.
+            progress("Listing personal-namespace projects...")
+            try:
+                all_projects = gl.projects.list(all=True)
+            except gitlab.exceptions.GitlabError as exc:
+                raise SyncFailed(
+                    f"failed to list projects for personal-namespace scan: {exc}"
+                ) from exc
+
+            personal_new = 0
+            personal_skipped = 0
+            for p in all_projects:
+                ns = getattr(p, "namespace", {}) or {}
+                if ns.get("kind") != "user":
+                    continue
+                if p.id in seen_project_ids:
+                    continue
+                seen_project_ids.add(p.id)
+                cache.write_project(conn, _project_row(p))
+                try:
+                    p_obj = gl.projects.get(p.id)
+                    p_members = p_obj.members_all.list(all=True)
+                except gitlab.exceptions.GitlabError as exc:
+                    if _is_forbidden(exc):
+                        skipped.append(
+                            f"project {p.path_with_namespace} (members: 403)"
+                        )
+                        personal_skipped += 1
+                        personal_new += 1
+                        continue
+                    raise SyncFailed(
+                        f"failed to list members for project {p.path_with_namespace}: {exc}"
+                    ) from exc
+                _write_members_deduped(conn, "project", p.id, p_members)
+                personal_new += 1
+            project_total += personal_new
+            if personal_new:
+                note = ""
+                if personal_skipped:
+                    note = f" ({personal_skipped} with 403 on members)"
+                progress(f"  Added {personal_new} personal-namespace project(s){note}")
+            else:
+                progress("  No personal-namespace projects to add.")
+
             # Nullify any orphan parent_ids (parent group not in result set).
             # Model layer treats parent_id=NULL as top-level, so orphans get
             # promoted rather than disappearing or breaking referential checks.

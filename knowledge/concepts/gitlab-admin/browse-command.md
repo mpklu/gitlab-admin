@@ -106,6 +106,26 @@ Structural HTML and JS-presence tests run in CI; behaviour is verified
 by manual browser smoke since adopting a headless-browser test dep
 isn't justified for a single self-contained file.
 
+### Personal-namespace projects
+
+GitLab projects can live under a *user* namespace (e.g.
+`/kal/scratch`) rather than a group. The `/api/v4/groups` endpoint
+only returns groups, so a groups-only walk misses every project under
+a user namespace. After the groups loop, `fetch.sync_all` issues a
+single `/api/v4/projects` call (admin token sees everything), filters
+to `namespace.kind == 'user'`, and writes any project it hasn't
+already persisted via the groups path. The `seen_project_ids`
+skip-set deduplicates against group-owned projects already in the
+cache. Per-project member fetches still get the recoverable-403
+treatment from the section above.
+
+The progress line reports `Added N personal-namespace project(s)` or
+`No personal-namespace projects to add.` depending on what surfaces.
+
+These projects land in the cache with `namespace_user_id` populated
+and `namespace_group_id` NULL — the model layer routes them to the
+synthetic `👤 Personal projects` root, separate from the group tree.
+
 ### Shared-project deduplication
 
 GitLab projects can be *shared* with multiple groups (common pattern:

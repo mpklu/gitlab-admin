@@ -2,6 +2,28 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] bugfix | fetch personal-namespace projects
+
+- Symptom: projects under a user namespace (e.g.
+  `https://gitlab.example.com/kal/scratch`) never made it into the
+  cache. The model layer had a `👤 Personal projects` synthetic root,
+  but it was always empty because `fetch.sync_all` only walked
+  `/api/v4/groups` (which doesn't return user namespaces).
+- Fix: after the groups loop, `fetch.sync_all` lists
+  `/api/v4/projects` (which an admin token can see in full), filters
+  to `namespace.kind == "user"`, and writes any project not already
+  in `seen_project_ids`. Per-project member fetches still honor the
+  recoverable-403 path.
+- Progress line: `Added N personal-namespace project(s)` (or `No
+  personal-namespace projects to add.`).
+- Tests added: `test_sync_picks_up_personal_namespace_projects` (mixed
+  group + personal), `test_sync_handles_only_personal_namespace_projects`
+  (no groups at all).
+- All seven existing sync tests grew a `_stub_projects_list_all(...,
+  [])` line to satisfy the new endpoint.
+- Updated: `concepts/gitlab-admin/browse-command.md` adds a
+  Personal-namespace projects section.
+
 ## [2026-05-20] feature | HTML report (Layout B)
 
 - Implemented Plan 2 of the design at
