@@ -2,6 +2,26 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-19] bugfix | fetch handles unordered + orphan groups
+
+- Symptom: first real `--refresh` against a self-hosted instance
+  crashed with `sqlite3.IntegrityError: FOREIGN KEY constraint failed`
+  inside `cache.write_group` because the API returned a subgroup
+  before its parent.
+- Fix: `fetch.sync_all` now disables `PRAGMA foreign_keys` during the
+  bulk insert; after all rows are written, runs an UPDATE to nullify
+  orphan `parent_id`s (parent group not in the result set);
+  re-enables FK enforcement before committing.
+- Side-effect: orphan subgroups (parent not visible to the token) are
+  now promoted to top-level instead of vanishing or crashing.
+- Tests added: `test_sync_handles_subgroup_before_parent_in_api_response`,
+  `test_sync_orphan_parent_id_becomes_top_level`.
+- Also: `test_refresh_without_credentials_exits_3` now passes
+  `--env-file <nonexistent>` so the project's real `.env` isn't picked
+  up during a credential-absent test path.
+- Updated: `concepts/gitlab-admin/browse-command.md` adds an "Orphan
+  parent_id handling" section.
+
 ## [2026-05-19] enhancement | dotenv loading at CLI entry
 
 - Added `python-dotenv` as a base dep; `gitlab_admin/browse/__main__.py`

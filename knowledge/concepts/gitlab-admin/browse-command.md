@@ -38,6 +38,23 @@ Refresh is atomic: write to a temp file in the same directory, then
 `docs/superpowers/specs/2026-05-19-gitlab-org-browser-design.md` §4 for
 the full schema.
 
+### Orphan parent_id handling
+
+The GitLab API doesn't guarantee that parent groups are returned before
+their subgroups, and admins can occasionally see a subgroup whose parent
+isn't in the result set at all. `fetch.sync_all` handles both by:
+
+1. Disabling `PRAGMA foreign_keys` during the bulk insert.
+2. After all rows are written, running
+   `UPDATE groups SET parent_id = NULL WHERE parent_id NOT IN (SELECT id FROM groups)` —
+   orphans get promoted to top-level rather than disappearing.
+3. Committing, then re-enabling FK enforcement on the connection.
+
+This trades referential strictness during the write window for
+robustness against API ordering and visibility quirks. The model layer
+already treats `parent_id = NULL` as top-level, so promoted orphans
+render naturally.
+
 ## Owner derivation
 
 The displayed "Owner" for a project is derived, not stored:

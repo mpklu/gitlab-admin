@@ -102,6 +102,15 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
     try:
         with cache.connect(tmp_path) as conn:
             cache.init_schema(conn)
+            # Disable FK enforcement during bulk load. Two reasons:
+            # (a) the API doesn't guarantee parents arrive before
+            # subgroups, so insertion order would otherwise trip
+            # `groups.parent_id REFERENCES groups(id)`; and (b) admins
+            # can occasionally see a subgroup whose parent isn't in
+            # the result set at all (e.g., parent archived or deleted).
+            # We clean up case (b) below by nullifying orphan parent_ids,
+            # then re-enable FK enforcement before committing.
+            conn.execute("PRAGMA foreign_keys = OFF")
             try:
                 groups = gl.groups.list(all=True, all_available=True)
             except gitlab.exceptions.GitlabError as exc:
@@ -128,6 +137,15 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
                         raise SyncFailed(f"failed to list members for project {p.path_with_namespace}: {exc}") from exc
                     _write_members_deduped(conn, "project", p.id, p_members)
 
+            # Nullify any orphan parent_ids (parent group not in result set).
+            # Model layer treats parent_id=NULL as top-level, so orphans get
+            # promoted rather than disappearing or breaking referential checks.
+            conn.execute(
+                "UPDATE groups SET parent_id = NULL "
+                "WHERE parent_id IS NOT NULL "
+                "AND parent_id NOT IN (SELECT id FROM groups)"
+            )
+
             cache.write_snapshot(conn, cache.SnapshotRow(
                 started_at=started,
                 completed_at=_utcnow_iso(),
@@ -135,6 +153,9 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
                 tool_version=tool_version,
             ))
             conn.commit()
+            # Re-enable FK enforcement for any subsequent reads
+            # (cache.connect() also sets this; this is belt-and-braces).
+            conn.execute("PRAGMA foreign_keys = ON")
 
         os.replace(tmp_path, cache_path)
     except Exception:

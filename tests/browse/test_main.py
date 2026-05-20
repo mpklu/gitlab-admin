@@ -33,8 +33,12 @@ def test_html_and_json_mutually_exclusive(fixture_db, capsys):
 def test_refresh_without_credentials_exits_3(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("GITLAB_URL", raising=False)
     monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+    # Point --env-file at a non-existent path so the auto-load doesn't
+    # walk up from CWD and pick up the project's real .env file.
+    empty_env = tmp_path / "no-such.env"
     rc = browse_main.main([
         "--cache-path", str(tmp_path / "x.sqlite"),
+        "--env-file", str(empty_env),
         "--refresh",
     ])
     captured = capsys.readouterr()

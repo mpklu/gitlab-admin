@@ -179,3 +179,55 @@ def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tm
         members = cache.load_members(conn, entity_type="project", entity_id=101)
     assert len(members) == 1
     assert members[0]["access_level"] == 50
+
+
+def test_sync_orphan_parent_id_becomes_top_level(stubbed_gitlab, tmp_cache):
+    """If the API returns a subgroup whose parent isn't in the result
+    set (admin can see the child but not the parent — rare but
+    possible in self-hosted setups with quirks), sync nullifies the
+    orphan parent_id so the group becomes top-level instead of
+    crashing the FK constraint."""
+    # Group 2 references parent_id=99, but group 99 is NOT returned.
+    _stub_groups_list(stubbed_gitlab, [
+        _group_payload(2, "lost-orphan", parent_id=99),
+    ])
+    _stub_group_get(stubbed_gitlab, _group_payload(2, "lost-orphan", parent_id=99))
+    _stub_members_all(stubbed_gitlab, "group", 2, [])
+    _stub_group_projects(stubbed_gitlab, 2, [])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        groups = cache.load_groups(conn)
+    assert len(groups) == 1
+    # Orphan parent_id was promoted to NULL (top-level).
+    assert groups[0]["parent_id"] is None
+    assert groups[0]["full_path"] == "lost-orphan"
+
+
+def test_sync_handles_subgroup_before_parent_in_api_response(
+    stubbed_gitlab, tmp_cache
+):
+    """GitLab's /api/v4/groups returns groups in API-defined order; there
+    is no guarantee that parents arrive before their subgroups. The sync
+    must defer FK checks so insertion order doesn't trip the
+    `groups.parent_id REFERENCES groups(id)` constraint."""
+    # Subgroup (2) is FIRST in the API response; its parent (1) is SECOND.
+    _stub_groups_list(stubbed_gitlab, [
+        _group_payload(2, "platform/services", parent_id=1),
+        _group_payload(1, "platform"),
+    ])
+    _stub_group_get(stubbed_gitlab, _group_payload(2, "platform/services", parent_id=1))
+    _stub_group_get(stubbed_gitlab, _group_payload(1, "platform"))
+    _stub_members_all(stubbed_gitlab, "group", 2, [])
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_group_projects(stubbed_gitlab, 2, [])
+    _stub_group_projects(stubbed_gitlab, 1, [])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        groups = cache.load_groups(conn)
+    assert {g["full_path"] for g in groups} == {"platform", "platform/services"}
