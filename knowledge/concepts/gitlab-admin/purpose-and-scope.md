@@ -14,7 +14,7 @@ self-hosted GitLab instance. It is a *shared internal repo*, not a
 distributed product: teammates clone it and run commands locally against
 the same instance using their own admin token.
 
-The toolkit targets three task families:
+The toolkit targets four task families:
 
 1. **User & group lifecycle** — onboarding, offboarding, role changes,
    periodic membership audits.
@@ -22,10 +22,13 @@ The toolkit targets three task families:
    projects (visibility, protected branches, MR rules, CI/CD config).
 3. **Access & permissions audit** — reporting who has what access,
    flagging deviation from policy, surfacing stale tokens and deploy keys.
+4. **Discovery / org navigation** — browsing the full org map (groups,
+   projects, owners, clone URLs, last activity) when GitLab's own web
+   UI can't keep up. See `browse-command.md`.
 
 ## Why this shape
 
-These three families are the recurring manual toil today. A Python repo
+These four families are the recurring manual toil today. A Python repo
 optimised for ad-hoc commands beats a packaged CLI because (a) the
 audience is small and trusted, (b) iteration speed matters more than
 polish, and (c) admin operations frequently need a quick custom variant.
