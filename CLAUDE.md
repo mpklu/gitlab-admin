@@ -94,6 +94,7 @@ or external integrations, add new rows here.
 | Env vars or how credentials are sourced | `concepts/gitlab/integration-model.md` |
 | A new command in `gitlab_admin/commands/` | Add `concepts/gitlab-admin/{command-name}.md` and a row to this table |
 | Anything in `gitlab_admin/browse/**` (cache schema, owner derivation, exit codes, renderers) | `concepts/gitlab-admin/browse-command.md` |
+| CLI surface — any flag added / removed / renamed in `gitlab_admin/browse/__main__.py`, or change in flag semantics | `concepts/gitlab-admin/browse-command.md` **and** the `CLI OPTIONS` + `EXAMPLES` sections of `run.sh`'s header docstring |
 | Test conventions, fakes, fixtures | _(add `concepts/gitlab-admin/testing-strategy.md` once tests land)_ |
 
 ### When the agent encounters code without a matching article
@@ -127,25 +128,6 @@ Add a compile entry to `knowledge/log.md` listing the articles touched.
 - For Typescript/Javascript, must use pnpm
 
 
-## Project Structure
-
-```
-gitlab_admin/        # Python package
-  __init__.py
-  client.py          # python-gitlab client wrapper (auth, retries, dry-run)
-  commands/          # one module per CLI command, run via `python -m gitlab_admin.<cmd>`
-tests/               # pytest
-scripts/             # living-doc validators (drift-check, validate-articles)
-knowledge/           # source-of-truth articles + index + log
-actions/drift-check/ # PR-time drift checker (used by CI)
-schemas/             # JSON schema for article frontmatter
-```
-
-*Greenfield note:* `gitlab_admin/` does not exist yet. It is the planned
-landing site for the first code-bearing PR. The shape above is a
-commitment captured in `concepts/gitlab-admin/tech-stack.md`; deviating
-from it requires updating that article in the same task.
-
 ## Key Commands
 
 ```bash
@@ -159,3 +141,18 @@ scripts/drift-check                 # check articles vs touched code
 ```
 
 See `run.sh`'s header comment block for the full entry-point contract.
+
+### Keeping `run.sh` in sync
+
+`run.sh`'s header docstring is a duplicate surface for the CLI options
+documented in `concepts/gitlab-admin/browse-command.md`. When you change
+the CLI in `gitlab_admin/browse/__main__.py`, update **both** in the same
+commit:
+
+1. The article (the canonical reference, used by drift-check).
+2. The `CLI OPTIONS` and (where useful) `EXAMPLES` sections of `run.sh`.
+
+Don't let `run.sh` drift. A teammate's first encounter with the tool is
+typically `less run.sh` — if the docstring lies, the tool gets a bad
+first impression. The article-mapping table above lists this as a
+same-task-rule entry.
