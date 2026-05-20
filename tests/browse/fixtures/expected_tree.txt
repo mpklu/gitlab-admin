@@ -1,0 +1,11 @@
+📁 data                                                        — eve (owner)
+└── ▢ etl-jobs                                eve · 2026-04-19 · prv
+📁 platform                                                    — alice (owner)
+└── 📁 services                                               — 2 project(s)
+    ├── ▢ auth-svc                                alice · 2026-05-16 · prv
+    └── ▢ legacy-auth               [archived]    alice · 2024-05-19 · prv
+
+👤 Personal projects
+└── ▢ kun.lu/scratch                              kun.lu · 2026-05-19 · prv
+
+Snapshot: 2026-05-19T18:05:00Z · https://gitlab.example.com · 4 projects across 3 groups
