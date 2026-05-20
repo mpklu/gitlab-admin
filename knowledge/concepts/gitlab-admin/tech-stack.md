@@ -16,7 +16,8 @@ project layout, and the conventions every command follows.
 - **GitLab client:** `python-gitlab` (PyPI). Battle-tested, covers
   the admin endpoints we need, and matches the synchronous, script-shaped
   style the team will write.
-- **Test runner:** `pytest`.
+- **Test runner:** `pytest`. HTTP stubbing via `responses` (dev dep).
+- **Cache:** stdlib `sqlite3`. No ORM.
 - **Packaging:** `pyproject.toml` defining the `gitlab_admin` package
   with dev extras. Installed editable for local work (`pip install -e ".[dev]"`).
   No published wheels; not a PyPI release.
@@ -61,3 +62,6 @@ the article must be rewritten.
   `GITLAB_URL` and `GITLAB_TOKEN` from the environment.
 - Commands return integer exit codes from `main()`.
 - A `--dry-run` flag is mandatory on any command that performs writes.
+- `gitlab_admin/browse/` follows the layered shape described in
+  `browse-command.md`: network confined to `fetch.py`, pure model layer,
+  thin renderers.

@@ -93,6 +93,7 @@ or external integrations, add new rows here.
 | GitLab API client wrapper, auth handling, or rate-limit behaviour | `concepts/gitlab/integration-model.md` |
 | Env vars or how credentials are sourced | `concepts/gitlab/integration-model.md` |
 | A new command in `gitlab_admin/commands/` | Add `concepts/gitlab-admin/{command-name}.md` and a row to this table |
+| Anything in `gitlab_admin/browse/**` (cache schema, owner derivation, exit codes, renderers) | `concepts/gitlab-admin/browse-command.md` |
 | Test conventions, fakes, fixtures | _(add `concepts/gitlab-admin/testing-strategy.md` once tests land)_ |
 
 ### When the agent encounters code without a matching article

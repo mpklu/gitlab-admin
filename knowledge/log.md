@@ -2,6 +2,19 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-19] feature | gitlab-admin browse — foundation
+
+- Implemented the `browse` foundation per Plan 1 of the design at
+  `docs/superpowers/specs/2026-05-19-gitlab-org-browser-design.md`.
+- Landed: `gitlab_admin/client.py`, `gitlab_admin/browse/` (cache, model,
+  fetch, text and JSON renderers, CLI entry).
+- Scope: expanded `purpose-and-scope.md` to a fourth task family
+  (discovery / org navigation).
+- Added: `concepts/gitlab-admin/browse-command.md` (load-bearing).
+- HTML and interactive renderers tracked for Plans 2 and 3.
+- Test surface: `pytest -v` runs across cache, model, fetch, both
+  renderers, and CLI; fetch tests stub HTTP via `responses`.
+
 ## [2026-05-19] bootstrap | adopt living-docs methodology + seed first articles
 
 - Installed living-docs methodology via `install/install.sh` from mpklu/living-doc (greenfield mode, recommended setup: core + cli + pre-commit hook + GitHub Action + bootstrap prompt).

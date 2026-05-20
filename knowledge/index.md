@@ -8,6 +8,7 @@ Grouped by subject area. Each article is a standalone reference. Connections at 
 | --- | --- | --- |
 | [Purpose and scope](concepts/gitlab-admin/purpose-and-scope.md) | What gitlab-admin is, the three task families it covers, what is out of scope. | 2026-05-19 |
 | [Tech stack and runtime conventions](concepts/gitlab-admin/tech-stack.md) | Python + python-gitlab, package layout, command convention, dry-run rule. | 2026-05-19 |
+| [browse command — org map](concepts/gitlab-admin/browse-command.md) | Cache + renderers for browsing the GitLab instance. | 2026-05-19 |
 
 ## External Systems
 
