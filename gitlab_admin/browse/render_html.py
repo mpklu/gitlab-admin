@@ -307,8 +307,17 @@ _JS = """
 
     const breadcrumb = p.path_with_namespace.split('/').slice(0, -1).join(' / ') || '(personal)';
 
-    const maintainers = (p.members || [])
-      .filter(function(m) { return m.access_level >= 40 && !m.is_expired; })
+    // Split direct project members by role so the panel can show
+    // Owners and Maintainers as two distinct lists (the top "Owner"
+    // field above is a single derived headline name; this is the
+    // full picture of direct elevated access on the project).
+    const activeMembers = (p.members || []).filter(function(m) { return !m.is_expired; });
+    const projectOwners = activeMembers
+      .filter(function(m) { return m.access_level === 50; })
+      .map(function(m) { return m.username; })
+      .join(', ') || '(none direct on this project)';
+    const projectMaintainers = activeMembers
+      .filter(function(m) { return m.access_level === 40; })
       .map(function(m) { return m.username; })
       .join(', ') || '(none)';
 
@@ -338,8 +347,12 @@ _JS = """
       cloneField('Clone — HTTPS', p.http_url_to_repo),
       cloneField('Clone — SSH', p.ssh_url_to_repo),
       el('div', { class: 'section' }, [
-        el('div', { class: 'label' }, ['Maintainers (Owner / Maintainer access)']),
-        document.createTextNode(maintainers),
+        el('div', { class: 'label' }, ['Project Owners (access_level 50)']),
+        document.createTextNode(projectOwners),
+      ]),
+      el('div', { class: 'section' }, [
+        el('div', { class: 'label' }, ['Project Maintainers (access_level 40)']),
+        document.createTextNode(projectMaintainers),
       ]),
     ];
 

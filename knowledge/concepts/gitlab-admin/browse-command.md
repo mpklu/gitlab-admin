@@ -81,8 +81,12 @@ that populates when a project row is clicked. Detail-panel fields:
 - HTTPS clone URL with a `📋 Copy` button (writes to clipboard via
   `navigator.clipboard.writeText`)
 - SSH clone URL with a `📋 Copy` button
-- Maintainers (de-duplicated, Owner or Maintainer access only,
-  expired members excluded)
+- **Project Owners** — direct members with `access_level == 50`,
+  expired excluded. Empty list shows `(none direct on this project)`
+  so the user can tell access is inherited from the namespace group.
+- **Project Maintainers** — direct members with `access_level == 40`,
+  expired excluded. Shown as a separate list from Owners so the two
+  roles are visually distinct.
 - "↗ Open in GitLab" link to the project's `web_url`
 
 Client-side filters in the top toolbar:

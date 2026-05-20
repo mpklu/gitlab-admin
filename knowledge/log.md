@@ -2,6 +2,22 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] enhancement | HTML detail panel splits Owners + Maintainers
+
+- The detail panel previously had a single "Maintainers" line that
+  filtered `access_level >= 40` — conflating Owners (50) and
+  Maintainers (40) into one list. Users couldn't tell who held
+  which role from the panel alone.
+- Now the panel renders two distinct sections:
+  - **Project Owners** — `access_level === 50` only.
+  - **Project Maintainers** — `access_level === 40` only.
+  Empty Owners list says `(none direct on this project)` so the
+  user knows the access is namespace-inherited (see the derived
+  headline `Owner` field at the top of the panel).
+- Test added: `test_render_html_detail_panel_splits_owners_and_maintainers`.
+- Updated: `concepts/gitlab-admin/browse-command.md` detail-panel
+  field list.
+
 ## [2026-05-20] bugfix | fetch personal-namespace projects
 
 - Symptom: projects under a user namespace (e.g.

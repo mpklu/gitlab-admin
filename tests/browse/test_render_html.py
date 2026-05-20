@@ -151,3 +151,25 @@ def test_render_html_detail_panel_template_has_copy_buttons(fixture_db):
     assert "SSH" in js
     assert "http_url_to_repo" in js
     assert "ssh_url_to_repo" in js
+
+
+def test_render_html_detail_panel_splits_owners_and_maintainers(fixture_db):
+    """Detail panel shows direct project Owners (access_level 50) and
+    direct project Maintainers (access_level 40) as TWO distinct
+    sections so the user can tell who has Owner-tier vs.
+    Maintainer-tier access without parsing a combined list."""
+    with cache.connect(fixture_db) as conn:
+        tree = model.build_tree(conn)
+    js = _extract_inline_scripts(render_html.render(tree))
+
+    # Two distinct labels for the two roles.
+    assert "Project Owners" in js, "Owners section label missing"
+    assert "Project Maintainers" in js, "Maintainers section label missing"
+
+    # Each list filters by an EXACT access_level (not >= 40), so the
+    # two roles end up in disjoint lists.
+    assert "access_level === 50" in js, "Owner list must filter access_level === 50"
+    assert "access_level === 40" in js, "Maintainer list must filter access_level === 40"
+
+    # Expired members are excluded from both.
+    assert "is_expired" in js
