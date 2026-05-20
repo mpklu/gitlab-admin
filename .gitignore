@@ -51,3 +51,6 @@ coverage.xml
 *.swo
 .DS_Store
 Thumbs.db
+
+# Superpowers brainstorm sessions (mockups, server state)
+.superpowers/
