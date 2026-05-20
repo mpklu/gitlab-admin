@@ -181,6 +181,58 @@ def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tm
     assert members[0]["access_level"] == 50
 
 
+def test_sync_skips_group_on_403_and_continues(stubbed_gitlab, tmp_cache):
+    """A per-entity 403 (admin can't see one specific group's members
+    or projects) must NOT abort the whole sync. The group is skipped
+    but the rest of the groups complete. The skip is reported via
+    progress."""
+    _stub_groups_list(stubbed_gitlab, [
+        _group_payload(1, "ok-group"),
+        _group_payload(2, "forbidden-group"),
+        _group_payload(3, "another-ok-group"),
+    ])
+    _stub_group_get(stubbed_gitlab, _group_payload(1, "ok-group"))
+    _stub_group_get(stubbed_gitlab, _group_payload(3, "another-ok-group"))
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_members_all(stubbed_gitlab, "group", 3, [])
+    _stub_group_projects(stubbed_gitlab, 1, [])
+    _stub_group_projects(stubbed_gitlab, 3, [])
+
+    # The forbidden group: gl.groups.get(2) returns 403.
+    stubbed_gitlab.add(
+        responses.GET,
+        "https://gitlab.example.com/api/v4/groups/2",
+        json={"message": "403 Forbidden"},
+        status=403,
+    )
+
+    messages: list[str] = []
+    gl = client.get_client()
+    fetch.sync_all(
+        gl,
+        cache_path=tmp_cache,
+        tool_version="0.1.0",
+        progress=messages.append,
+    )
+
+    # Sync completed (didn't raise). Both readable groups are persisted.
+    with cache.connect(tmp_cache) as conn:
+        groups = cache.load_groups(conn)
+    paths = {g["full_path"] for g in groups}
+    # The forbidden group was still listed via /api/v4/groups (which
+    # succeeded), so its row was written *before* the members fetch
+    # tried. That's acceptable: we have the group's basic metadata but
+    # no members.
+    assert "ok-group" in paths
+    assert "another-ok-group" in paths
+
+    # The progress stream announces the skip.
+    joined = "\n".join(messages)
+    assert "Skipped" in joined
+    assert "forbidden-group" in joined
+    assert "403" in joined
+
+
 def test_sync_skips_project_already_seen_in_another_group(
     stubbed_gitlab, tmp_cache
 ):

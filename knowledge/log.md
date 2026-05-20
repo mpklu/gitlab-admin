@@ -2,6 +2,24 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] bugfix | per-entity 403 is recoverable
+
+- Symptom: real-instance refresh died at group 62/63 with
+  `403: 403 Forbidden` on listing members of a single group (`ops`).
+  The whole sync aborted; no cache was written.
+- Spec §7 already specified the right behavior ("per-entity 403 → log
+  + skip"). Plan 1's final review flagged it as a deferred item.
+  Implemented now.
+- Fix: `fetch.sync_all` catches `gitlab.exceptions.GitlabError` with
+  `response_code == 403` on per-entity fetches (group members, group
+  projects, project members), records the skip, and continues. A
+  summary listing the first 10 skipped entities prints before commit.
+- Other HTTP errors (401 auth, 5xx server, network) still raise
+  `SyncFailed` — they're not safely-recoverable.
+- Test added: `test_sync_skips_group_on_403_and_continues`.
+- Updated: `concepts/gitlab-admin/browse-command.md` adds a
+  Per-entity 403 handling section.
+
 ## [2026-05-20] bugfix | dedupe shared projects in fetch
 
 - Symptom: real-instance refresh crashed mid-walk with

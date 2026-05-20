@@ -47,6 +47,24 @@ counts, final commit notice). The CLI passes a stderr printer prefixed
 This exists because a real-instance refresh can take minutes against a
 hundreds-of-projects setup; without progress, the command looks hung.
 
+### Per-entity 403 handling
+
+The GitLab API can return 403 on a specific group or project even when
+the admin token works generally (some self-hosted instances have
+quirky ACLs, archived-but-visible groups, or recently-permission-changed
+resources). `fetch.sync_all` treats per-entity 403s as recoverable:
+
+- The offending entity's members/projects fetch is skipped.
+- The rest of the sync continues.
+- A progress line announces the skip immediately
+  (`(skipped: 403 on members)`).
+- Before commit, a summary lists all skipped entities (first 10 names
+  plus an "and N more" count if the list is longer).
+
+Other HTTP errors (auth 401, server 5xx, network timeouts) still abort
+the whole sync via `SyncFailed` — they indicate problems where partial
+data isn't safe.
+
 ### Shared-project deduplication
 
 GitLab projects can be *shared* with multiple groups (common pattern:

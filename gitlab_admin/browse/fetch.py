@@ -92,6 +92,17 @@ def _noop_progress(_msg: str) -> None:
     pass
 
 
+def _is_forbidden(exc: Exception) -> bool:
+    """True if a GitLab API exception represents an HTTP 403.
+
+    Per-entity 403s are recoverable — the admin can't see one specific
+    group or project; the rest of the sync should still complete.
+    Distinct from auth errors (401), which kill the whole sync.
+    """
+    code = getattr(exc, "response_code", None)
+    return code == 403
+
+
 def sync_all(
     gl: gitlab.Gitlab,
     *,
@@ -143,6 +154,7 @@ def sync_all(
             # UNIQUE constraint violation and a redundant members fetch.
             seen_group_ids: set[int] = set()
             seen_project_ids: set[int] = set()
+            skipped: list[str] = []
             project_total = 0
             for i, g in enumerate(groups, start=1):
                 if g.id in seen_group_ids:
@@ -156,12 +168,24 @@ def sync_all(
                     group_obj = gl.groups.get(g.id)
                     g_members = group_obj.members_all.list(all=True)
                 except gitlab.exceptions.GitlabError as exc:
+                    if _is_forbidden(exc):
+                        skipped.append(f"group {g.full_path} (members: 403)")
+                        progress(
+                            f"  [{i}/{total_groups}] {g.full_path:<40} (skipped: 403 on members)"
+                        )
+                        continue
                     raise SyncFailed(f"failed to list members for group {g.full_path}: {exc}") from exc
                 _write_members_deduped(conn, "group", g.id, g_members)
 
                 try:
                     projects = group_obj.projects.list(all=True, include_subgroups=False)
                 except gitlab.exceptions.GitlabError as exc:
+                    if _is_forbidden(exc):
+                        skipped.append(f"group {g.full_path} (projects: 403)")
+                        progress(
+                            f"  [{i}/{total_groups}] {g.full_path:<40} (skipped: 403 on projects)"
+                        )
+                        continue
                     raise SyncFailed(f"failed to list projects for group {g.full_path}: {exc}") from exc
                 new_projects = [p for p in projects if p.id not in seen_project_ids]
                 dup_count = len(projects) - len(new_projects)
@@ -178,6 +202,11 @@ def sync_all(
                         p_obj = gl.projects.get(p.id)
                         p_members = p_obj.members_all.list(all=True)
                     except gitlab.exceptions.GitlabError as exc:
+                        if _is_forbidden(exc):
+                            skipped.append(
+                                f"project {p.path_with_namespace} (members: 403)"
+                            )
+                            continue
                         raise SyncFailed(f"failed to list members for project {p.path_with_namespace}: {exc}") from exc
                     _write_members_deduped(conn, "project", p.id, p_members)
 
@@ -196,6 +225,12 @@ def sync_all(
                 gitlab_url=gl.url,
                 tool_version=tool_version,
             ))
+            if skipped:
+                progress(f"Skipped {len(skipped)} entit{'y' if len(skipped) == 1 else 'ies'} due to access errors:")
+                for s in skipped[:10]:
+                    progress(f"  - {s}")
+                if len(skipped) > 10:
+                    progress(f"  ... and {len(skipped) - 10} more")
             progress(f"Committing: {total_groups} groups, {project_total} projects.")
             conn.commit()
             # Re-enable FK enforcement for any subsequent reads
