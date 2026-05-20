@@ -47,6 +47,18 @@ counts, final commit notice). The CLI passes a stderr printer prefixed
 This exists because a real-instance refresh can take minutes against a
 hundreds-of-projects setup; without progress, the command looks hung.
 
+### Shared-project deduplication
+
+GitLab projects can be *shared* with multiple groups (common pattern:
+a code-review group like `approvers/engineers` that has ~200 projects
+shared with it). When the same project appears in two groups' project
+listings, `fetch.sync_all` would otherwise crash on
+`UNIQUE constraint failed: projects.id`. The sync tracks seen project
+IDs and skips duplicates — both the INSERT and the redundant
+`/members/all` fetch. The same skip-set is also applied to groups
+defensively. The progress line reports `N new project(s), K shared/already-seen`
+so it's obvious when this is happening.
+
 ### Orphan parent_id handling
 
 The GitLab API doesn't guarantee that parent groups are returned before

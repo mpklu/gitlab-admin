@@ -181,6 +181,42 @@ def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tm
     assert members[0]["access_level"] == 50
 
 
+def test_sync_skips_project_already_seen_in_another_group(
+    stubbed_gitlab, tmp_cache
+):
+    """Project 101 is in group 1's projects list AND in group 2's
+    projects list (shared with the second group — common GitLab pattern
+    for code-review/approvers groups). Sync must persist it only once
+    and not crash on the UNIQUE constraint."""
+    _stub_groups_list(stubbed_gitlab, [
+        _group_payload(1, "team-platform"),
+        _group_payload(2, "approvers"),
+    ])
+    _stub_group_get(stubbed_gitlab, _group_payload(1, "team-platform"))
+    _stub_group_get(stubbed_gitlab, _group_payload(2, "approvers"))
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_members_all(stubbed_gitlab, "group", 2, [])
+
+    # Same project appears in both groups' project lists.
+    shared = _project_payload(101, 1, "team-platform/billing")
+    _stub_group_projects(stubbed_gitlab, 1, [shared])
+    _stub_group_projects(stubbed_gitlab, 2, [shared])
+
+    # Project get + members are stubbed ONCE — if we wrongly call them
+    # twice, responses will raise ConnectionError because the second
+    # call has no matching stub.
+    _stub_project_get(stubbed_gitlab, shared)
+    _stub_members_all(stubbed_gitlab, "project", 101, [])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        projects = cache.load_projects(conn)
+    assert len(projects) == 1
+    assert projects[0]["path_with_namespace"] == "team-platform/billing"
+
+
 def test_sync_calls_progress_callback_with_status(stubbed_gitlab, tmp_cache):
     """The progress callback is invoked at each major step so the CLI
     can show live output instead of looking hung. Tests the wiring,

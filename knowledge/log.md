@@ -2,6 +2,25 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] bugfix | dedupe shared projects in fetch
+
+- Symptom: real-instance refresh crashed mid-walk with
+  `sqlite3.IntegrityError: UNIQUE constraint failed: projects.id`
+  on a group named `approvers/engineers` with ~200 projects.
+- Root cause: GitLab projects can be *shared* with multiple groups
+  (common for code-review groups). The same project then appears in
+  two groups' `/projects` listings, and the second INSERT trips the
+  PK constraint.
+- Fix: `fetch.sync_all` tracks `seen_project_ids` (and
+  `seen_group_ids` defensively) and skips already-persisted entities.
+  This also avoids a redundant `/members/all` fetch for each shared
+  project.
+- Progress line now distinguishes `N new project(s)` from
+  `K shared/already-seen` so the user can see why a count is small.
+- Test added: `test_sync_skips_project_already_seen_in_another_group`.
+- Updated: `concepts/gitlab-admin/browse-command.md` adds a
+  Shared-project deduplication section.
+
 ## [2026-05-20] enhancement | progress output during `--refresh`
 
 - Symptom: real-instance refresh on a hundreds-of-projects setup

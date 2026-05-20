@@ -136,8 +136,21 @@ def sync_all(
                 raise SyncFailed(f"failed to list groups: {exc}") from exc
             total_groups = len(groups)
             progress(f"Found {total_groups} groups; walking projects + members")
+            # Track ids we've already persisted in this sync. A project can
+            # appear in multiple groups' listings when it's *shared* with
+            # those groups (common GitLab pattern for code-review groups
+            # like "approvers/engineers"). Skipping dupes avoids both the
+            # UNIQUE constraint violation and a redundant members fetch.
+            seen_group_ids: set[int] = set()
+            seen_project_ids: set[int] = set()
             project_total = 0
             for i, g in enumerate(groups, start=1):
+                if g.id in seen_group_ids:
+                    progress(
+                        f"  [{i}/{total_groups}] {g.full_path:<40} (already seen — skipped)"
+                    )
+                    continue
+                seen_group_ids.add(g.id)
                 cache.write_group(conn, _group_row(g))
                 try:
                     group_obj = gl.groups.get(g.id)
@@ -150,13 +163,16 @@ def sync_all(
                     projects = group_obj.projects.list(all=True, include_subgroups=False)
                 except gitlab.exceptions.GitlabError as exc:
                     raise SyncFailed(f"failed to list projects for group {g.full_path}: {exc}") from exc
-                n_proj = len(projects)
-                project_total += n_proj
+                new_projects = [p for p in projects if p.id not in seen_project_ids]
+                dup_count = len(projects) - len(new_projects)
+                project_total += len(new_projects)
+                shared_note = f", {dup_count} shared/already-seen" if dup_count else ""
                 progress(
                     f"  [{i}/{total_groups}] {g.full_path:<40} "
-                    f"({n_proj} project(s), {len(g_members)} member(s))"
+                    f"({len(new_projects)} new project(s){shared_note}, {len(g_members)} member(s))"
                 )
-                for p in projects:
+                for p in new_projects:
+                    seen_project_ids.add(p.id)
                     cache.write_project(conn, _project_row(p))
                     try:
                         p_obj = gl.projects.get(p.id)
