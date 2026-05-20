@@ -1,0 +1,181 @@
+import json
+import sqlite3
+
+import pytest
+import responses
+
+from gitlab_admin import client
+from gitlab_admin.browse import cache, fetch
+
+
+@pytest.fixture
+def stubbed_gitlab(monkeypatch):
+    monkeypatch.setenv("GITLAB_URL", "https://gitlab.example.com")
+    monkeypatch.setenv("GITLAB_TOKEN", "test-token")
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        yield rsps
+
+
+def _stub_groups_list(rsps, groups):
+    rsps.add(
+        responses.GET,
+        "https://gitlab.example.com/api/v4/groups",
+        json=groups,
+        status=200,
+        adding_headers={"X-Total-Pages": "1", "X-Next-Page": ""},
+    )
+
+
+def _stub_group_get(rsps, group_payload):
+    rsps.add(
+        responses.GET,
+        f"https://gitlab.example.com/api/v4/groups/{group_payload['id']}",
+        json=group_payload,
+        status=200,
+    )
+
+
+def _stub_group_projects(rsps, group_id, projects):
+    rsps.add(
+        responses.GET,
+        f"https://gitlab.example.com/api/v4/groups/{group_id}/projects",
+        json=projects,
+        status=200,
+        adding_headers={"X-Total-Pages": "1", "X-Next-Page": ""},
+    )
+
+
+def _stub_members_all(rsps, entity_type, entity_id, members):
+    plural = "groups" if entity_type == "group" else "projects"
+    rsps.add(
+        responses.GET,
+        f"https://gitlab.example.com/api/v4/{plural}/{entity_id}/members/all",
+        json=members,
+        status=200,
+        adding_headers={"X-Total-Pages": "1", "X-Next-Page": ""},
+    )
+
+
+def _stub_project_get(rsps, project_payload):
+    rsps.add(
+        responses.GET,
+        f"https://gitlab.example.com/api/v4/projects/{project_payload['id']}",
+        json=project_payload,
+        status=200,
+    )
+
+
+def _group_payload(id_, full_path, parent_id=None):
+    return {
+        "id": id_, "parent_id": parent_id, "full_path": full_path,
+        "name": full_path.split("/")[-1], "visibility": "private",
+        "description": None,
+        "web_url": f"https://gitlab.example.com/groups/{full_path}",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def _project_payload(id_, namespace_id, path):
+    return {
+        "id": id_, "namespace": {"id": namespace_id, "kind": "group"},
+        "path_with_namespace": path, "name": path.split("/")[-1],
+        "default_branch": "main", "visibility": "private", "archived": False,
+        "last_activity_at": "2026-05-01T00:00:00Z",
+        "http_url_to_repo": f"https://gitlab.example.com/{path}.git",
+        "ssh_url_to_repo": f"git@gitlab.example.com:{path}.git",
+        "web_url": f"https://gitlab.example.com/{path}",
+        "description": None, "topics": [], "star_count": 0,
+    }
+
+
+def _member_payload(user_id, username, access_level, expires_at=None):
+    return {
+        "id": user_id, "username": username, "name": username.title(),
+        "access_level": access_level, "expires_at": expires_at,
+    }
+
+
+def test_full_sync_writes_groups_projects_members(stubbed_gitlab, tmp_cache):
+    g1 = _group_payload(1, "platform")
+    g2 = _group_payload(2, "platform/services", parent_id=1)
+    p101 = _project_payload(101, 2, "platform/services/auth-svc")
+
+    _stub_groups_list(stubbed_gitlab, [g1, g2])
+    _stub_group_get(stubbed_gitlab, g1)
+    _stub_group_get(stubbed_gitlab, g2)
+    _stub_group_projects(stubbed_gitlab, 1, [])
+    _stub_group_projects(stubbed_gitlab, 2, [p101])
+    _stub_members_all(stubbed_gitlab, "group", 1, [
+        _member_payload(10, "alice", 50),
+    ])
+    _stub_members_all(stubbed_gitlab, "group", 2, [])
+    _stub_project_get(stubbed_gitlab, p101)
+    _stub_members_all(stubbed_gitlab, "project", 101, [
+        _member_payload(12, "bob", 40),
+    ])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        assert cache.read_schema_version(conn) == cache.SCHEMA_VERSION
+        groups = cache.load_groups(conn)
+        assert {g["full_path"] for g in groups} == {"platform", "platform/services"}
+        projects = cache.load_projects(conn)
+        assert projects[0]["path_with_namespace"] == "platform/services/auth-svc"
+
+
+def test_sync_atomic_replace_preserves_old_cache_on_failure(stubbed_gitlab, tmp_cache):
+    # Seed an existing cache with one group.
+    with cache.connect(tmp_cache) as conn:
+        cache.init_schema(conn)
+        cache.write_group(conn, _group_payload(99, "old-group"))
+        conn.commit()
+
+    g1 = _group_payload(1, "platform")
+
+    # Stub a failure mid-sync.
+    _stub_groups_list(stubbed_gitlab, [g1])
+    _stub_group_get(stubbed_gitlab, g1)
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    stubbed_gitlab.add(
+        responses.GET,
+        "https://gitlab.example.com/api/v4/groups/1/projects",
+        status=500,
+    )
+
+    gl = client.get_client()
+    with pytest.raises(fetch.SyncFailed):
+        fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    # Old cache must still be readable and unchanged.
+    with cache.connect(tmp_cache) as conn:
+        groups = cache.load_groups(conn)
+        assert len(groups) == 1
+        assert groups[0]["full_path"] == "old-group"
+
+
+def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tmp_cache):
+    g1 = _group_payload(1, "platform")
+    p101 = _project_payload(101, 1, "platform/auth")
+
+    _stub_groups_list(stubbed_gitlab, [g1])
+    _stub_group_get(stubbed_gitlab, g1)
+    _stub_group_projects(stubbed_gitlab, 1, [p101])
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_project_get(stubbed_gitlab, p101)
+    # /members/all returns alice twice: as direct (40) and inherited (50).
+    # The endpoint already returns the highest-access copy per user, but
+    # we test fetch's dedup logic against duplicate input regardless.
+    _stub_members_all(stubbed_gitlab, "project", 101, [
+        _member_payload(10, "alice", 40),
+        _member_payload(10, "alice", 50),
+    ])
+
+    gl = client.get_client()
+    fetch.sync_all(gl, cache_path=tmp_cache, tool_version="0.1.0")
+
+    with cache.connect(tmp_cache) as conn:
+        members = cache.load_members(conn, entity_type="project", entity_id=101)
+    assert len(members) == 1
+    assert members[0]["access_level"] == 50
