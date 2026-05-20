@@ -23,13 +23,76 @@
 #   CLI. There are no flags handled by this script itself — use
 #   `./run.sh --help` for the underlying tool's full option list.
 #
+# CLI OPTIONS (passed straight through to gitlab_admin.browse)
+#
+#   Output modes (mutually exclusive — pick at most one):
+#     (default)               render an indented text tree to stdout
+#     --json                  emit JSON tree to stdout
+#     --html PATH             write a self-contained Layout B HTML report
+#                             (inline CSS + JS, JSON data island, no CDN;
+#                             includes clipboard-copy buttons for HTTPS &
+#                             SSH clone URLs)
+#     -i, --interactive       interactive menu mode (Plan 3 — not yet
+#                             implemented; currently exits 4)
+#
+#   Sync:
+#     --refresh               re-fetch from GitLab before rendering. The
+#                             ONLY operation that touches the network.
+#                             Atomic: a failed sync leaves the existing
+#                             cache untouched. Shows per-group progress
+#                             on stderr; can take minutes on large orgs.
+#
+#   Text-tree filters (only affect the default text renderer):
+#     --group PATH            root the tree at this group (e.g.
+#                             `platform/services`)
+#     --owner USERNAME        show only projects derived-owner == USERNAME
+#     --stale-days N          show only projects with no activity in the
+#                             last N days
+#     --no-archived           hide archived projects
+#
+#   Cache:
+#     --cache-path PATH       use PATH instead of
+#                             ~/.cache/gitlab-admin/browse.sqlite
+#
+#   Credentials (override env / .env for this invocation):
+#     --gitlab-url URL        override $GITLAB_URL
+#     --gitlab-token TOKEN    override $GITLAB_TOKEN
+#     --env-file PATH         load .env from PATH instead of the default
+#                             walk-up-from-CWD lookup. A non-existent
+#                             path silently disables .env loading.
+#
 # EXAMPLES
-#   ./run.sh                                    # text tree from cache
-#   ./run.sh --refresh                          # full re-fetch + render
-#   ./run.sh --json | jq '.groups[].full_path'  # script-friendly output
-#   ./run.sh --group platform                   # subtree of the org
-#   ./run.sh --owner kun.lu --no-archived       # filtered view
-#   ./run.sh --refresh --env-file scripts/.env  # non-default .env location
+#   Browse the cached org map (default text tree):
+#     ./run.sh
+#
+#   Refresh from GitLab, then render:
+#     ./run.sh --refresh
+#
+#   Write the HTML report and open it (macOS):
+#     ./run.sh --html /tmp/preview.html && open /tmp/preview.html
+#
+#   Refresh + write HTML in one shot:
+#     ./run.sh --refresh --html ~/Desktop/gitlab-org.html
+#
+#   Pipe the JSON tree into jq for ad-hoc queries:
+#     ./run.sh --json | jq '.groups[].full_path'
+#
+#   List every archived project in the data group:
+#     ./run.sh --group data --owner $(whoami)
+#     ./run.sh --json | jq '.. | objects | select(.archived==true) | .path_with_namespace'
+#
+#   Find projects that haven't been touched in a year:
+#     ./run.sh --stale-days 365
+#
+#   Use a non-default .env (e.g., scripts/.env) for credentials:
+#     ./run.sh --refresh --env-file scripts/.env
+#
+#   One-off credential override (token rotation, scratch testing):
+#     GITLAB_TOKEN=glpat-xxxx ./run.sh --refresh
+#     ./run.sh --refresh --gitlab-token glpat-xxxx
+#
+#   Use a non-default cache (e.g., a snapshot from another instance):
+#     ./run.sh --cache-path ./snapshot.sqlite
 #
 # ENVIRONMENT
 #   GITLAB_URL, GITLAB_TOKEN
