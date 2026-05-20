@@ -156,3 +156,45 @@ def write_member(conn: sqlite3.Connection, row: dict) -> None:
         ":access_level, :expires_at)",
         row,
     )
+
+
+def load_latest_snapshot(conn: sqlite3.Connection) -> SnapshotRow | None:
+    row = conn.execute(
+        "SELECT started_at, completed_at, gitlab_url, tool_version "
+        "FROM snapshot ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    return SnapshotRow(
+        started_at=row["started_at"],
+        completed_at=row["completed_at"],
+        gitlab_url=row["gitlab_url"],
+        tool_version=row["tool_version"],
+    )
+
+
+def load_groups(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT id, parent_id, full_path, name, visibility, description, "
+        "web_url, created_at FROM groups ORDER BY full_path"
+    )]
+
+
+def load_projects(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT id, namespace_group_id, namespace_user_id, path_with_namespace, "
+        "name, default_branch, visibility, archived, last_activity_at, "
+        "http_url_to_repo, ssh_url_to_repo, web_url, description, topics, "
+        "star_count FROM projects ORDER BY path_with_namespace"
+    )]
+
+
+def load_members(
+    conn: sqlite3.Connection, *, entity_type: str, entity_id: int
+) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT user_id, username, name, access_level, expires_at "
+        "FROM members WHERE entity_type = ? AND entity_id = ? "
+        "ORDER BY access_level DESC, user_id ASC",
+        (entity_type, entity_id),
+    )]
