@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitlab-admin"
+version = "0.1.0"
+description = "Toolkit for administering a self-hosted GitLab instance"
+requires-python = ">=3.11"
+dependencies = [
+    "python-gitlab>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "responses>=0.24",
+]
+
+[tool.setuptools.packages.find]
+include = ["gitlab_admin*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
