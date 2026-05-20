@@ -93,3 +93,42 @@ def test_env_file_does_not_override_shell_env(tmp_path, monkeypatch):
     import os
     assert os.environ.get("GITLAB_URL") == "https://shell-wins.example.com"
     assert os.environ.get("GITLAB_TOKEN") == "shell-token"
+
+
+def test_html_flag_writes_file(fixture_db, tmp_path):
+    out = tmp_path / "report.html"
+    rc = browse_main.main([
+        "--cache-path", str(fixture_db),
+        "--html", str(out),
+    ])
+    assert rc == 0
+    assert out.exists()
+    content = out.read_text()
+    assert content.startswith("<!DOCTYPE html>")
+    assert "auth-svc" in content  # project data made it in via data island
+
+
+def test_html_flag_overwrites_existing(fixture_db, tmp_path):
+    out = tmp_path / "report.html"
+    out.write_text("OLD CONTENT")
+    rc = browse_main.main([
+        "--cache-path", str(fixture_db),
+        "--html", str(out),
+    ])
+    assert rc == 0
+    assert "OLD CONTENT" not in out.read_text()
+    assert "<!DOCTYPE html>" in out.read_text()
+
+
+def test_html_flag_returns_4_when_path_is_a_directory(
+    fixture_db, tmp_path, capsys
+):
+    """Writing to a directory must surface a clear error, not a stack
+    trace. Spec §7 specifies exit 4 for I/O failures on --html PATH."""
+    rc = browse_main.main([
+        "--cache-path", str(fixture_db),
+        "--html", str(tmp_path),  # directory, not a file
+    ])
+    captured = capsys.readouterr()
+    assert rc == 4
+    assert "cannot write" in captured.err.lower() or "is a directory" in captured.err.lower()

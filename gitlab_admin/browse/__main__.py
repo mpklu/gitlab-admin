@@ -46,7 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
     modes.add_argument("--json", action="store_true",
                        help="Emit JSON to stdout instead of a text tree.")
     modes.add_argument("--html", type=Path, metavar="PATH",
-                       help="Write HTML report to PATH (not implemented in this plan).")
+                       help="Write a self-contained Layout B HTML report to PATH.")
     modes.add_argument("-i", "--interactive", action="store_true",
                        help="Interactive menu mode (not implemented in this plan).")
 
@@ -117,10 +117,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         load_dotenv(override=False)
 
-    if args.html is not None or args.interactive:
+    if args.interactive:
         print(
-            "--html and --interactive land in Plan 2 / Plan 3. Use the text "
-            "renderer or --json for now.",
+            "--interactive lands in Plan 3. Use the text renderer, --json, "
+            "or --html for now.",
             file=sys.stderr,
         )
         return EXIT_UNEXPECTED
@@ -142,6 +142,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         from . import render_json
         sys.stdout.write(render_json.render(tree))
+        return EXIT_OK
+
+    if args.html is not None:
+        from . import render_html
+        try:
+            args.html.write_text(render_html.render(tree), encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot write {args.html}: {exc}", file=sys.stderr)
+            return EXIT_UNEXPECTED
+        print(f"[browse] wrote {args.html}", file=sys.stderr)
         return EXIT_OK
 
     output = render_text.render(
