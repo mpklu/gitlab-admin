@@ -194,6 +194,282 @@ main {
 }
 """
 
+_JS = """
+(function() {
+  'use strict';
+
+  // ── State ────────────────────────────────────────────────
+  const ORG = JSON.parse(document.getElementById('org-data').textContent);
+  const STATE = {
+    search: '',
+    showArchived: false,
+    showStaleOnly: false,
+    visibility: { private: true, internal: true, public: true },
+  };
+  const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+  // ── Helpers ──────────────────────────────────────────────
+  // Build a DOM element without ever parsing HTML. attrs can include
+  // `class`, `dataset` (a sub-object), event listeners under `on<Event>`
+  // keys, or plain attributes. children is an array of strings (text)
+  // or other Nodes; nulls are skipped.
+  function el(tag, attrs, children) {
+    const e = document.createElement(tag);
+    if (attrs) {
+      for (const k in attrs) {
+        if (k === 'class') e.className = attrs[k];
+        else if (k === 'dataset') {
+          for (const d in attrs.dataset) e.dataset[d] = attrs.dataset[d];
+        } else if (k.startsWith('on')) {
+          e.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+        } else e.setAttribute(k, attrs[k]);
+      }
+    }
+    if (children) {
+      for (const c of children) {
+        if (c == null) continue;
+        e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+    }
+    return e;
+  }
+
+  function shortDate(iso) { return iso ? iso.split('T')[0] : ''; }
+
+  function visClass(v) { return v === 'private' ? 'prv' : v === 'internal' ? 'int' : 'pub'; }
+
+  // ── Tree rendering ──────────────────────────────────────
+  function renderTree() {
+    const root = document.getElementById('tree');
+    const children = [];
+    for (const g of ORG.groups) children.push(renderGroup(g));
+    if (ORG.personal_namespace_projects && ORG.personal_namespace_projects.length > 0) {
+      const personal = el('div', { class: 'group' }, [
+        el('div', { class: 'group-header' }, [
+          el('span', { class: 'caret' }, ['▾']),
+          el('span', { class: 'name' }, ['👤 Personal projects']),
+        ]),
+        el('div', { class: 'group-children' },
+          ORG.personal_namespace_projects.map(function(p) { return renderProject(p); })),
+      ]);
+      children.push(personal);
+    }
+    root.replaceChildren.apply(root, children);
+  }
+
+  function renderGroup(g) {
+    const header = el('div', { class: 'group-header' }, [
+      el('span', { class: 'caret' }, ['▾']),
+      el('span', { class: 'name' }, ['📁 ' + g.full_path]),
+    ]);
+    const childKids = [];
+    for (const sg of g.children_groups) childKids.push(renderGroup(sg));
+    for (const p of g.projects) childKids.push(renderProject(p));
+    const childrenEl = el('div', { class: 'group-children' }, childKids);
+    const groupEl = el('div', { class: 'group' }, [header, childrenEl]);
+    header.addEventListener('click', function() {
+      groupEl.classList.toggle('collapsed');
+    });
+    return groupEl;
+  }
+
+  function renderProject(p) {
+    const archivedPill = p.archived
+      ? el('span', { class: 'pill archived' }, ['archived'])
+      : null;
+    const projEl = el('div', {
+      class: 'project',
+      dataset: {
+        path: p.path_with_namespace,
+        visibility: p.visibility,
+        archived: String(p.archived),
+        lastActivity: p.last_activity_at,
+      },
+    }, [
+      el('span', { class: 'name' }, ['▢ ' + p.name]),
+      archivedPill,
+      el('span', { class: 'meta' }, [
+        p.owner + ' · ' + shortDate(p.last_activity_at) + ' · ',
+      ]),
+      el('span', { class: 'pill ' + visClass(p.visibility) }, [visClass(p.visibility)]),
+    ]);
+    projEl.addEventListener('click', function() { showDetail(p, projEl); });
+    return projEl;
+  }
+
+  // ── Detail panel ────────────────────────────────────────
+  function showDetail(p, rowEl) {
+    const previouslySelected = document.querySelectorAll('.project.selected');
+    for (const s of previouslySelected) s.classList.remove('selected');
+    if (rowEl) rowEl.classList.add('selected');
+
+    const detail = document.getElementById('detail');
+
+    const breadcrumb = p.path_with_namespace.split('/').slice(0, -1).join(' / ') || '(personal)';
+
+    const maintainers = (p.members || [])
+      .filter(function(m) { return m.access_level >= 40 && !m.is_expired; })
+      .map(function(m) { return m.username; })
+      .join(', ') || '(none)';
+
+    const sections = [
+      el('h2', null, [p.name]),
+      el('div', { class: 'crumb' }, [breadcrumb]),
+      el('div', { class: 'section row' }, [
+        el('div', null, [
+          el('div', { class: 'label' }, ['Owner']),
+          document.createTextNode(p.owner),
+        ]),
+        el('div', null, [
+          el('div', { class: 'label' }, ['Visibility']),
+          el('span', { class: 'pill ' + visClass(p.visibility) }, [p.visibility]),
+        ]),
+      ]),
+      el('div', { class: 'section row' }, [
+        el('div', null, [
+          el('div', { class: 'label' }, ['Last updated']),
+          document.createTextNode(shortDate(p.last_activity_at)),
+        ]),
+        el('div', null, [
+          el('div', { class: 'label' }, ['Default branch']),
+          document.createTextNode(p.default_branch || '(none)'),
+        ]),
+      ]),
+      cloneField('Clone — HTTPS', p.http_url_to_repo),
+      cloneField('Clone — SSH', p.ssh_url_to_repo),
+      el('div', { class: 'section' }, [
+        el('div', { class: 'label' }, ['Maintainers (Owner / Maintainer access)']),
+        document.createTextNode(maintainers),
+      ]),
+    ];
+
+    if (p.web_url) {
+      sections.push(el('div', { class: 'section' }, [
+        el('a', { class: 'gitlab-link', href: p.web_url, target: '_blank', rel: 'noopener' },
+          ['↗ Open in GitLab']),
+      ]));
+    }
+
+    detail.replaceChildren.apply(detail, sections);
+  }
+
+  function cloneField(label, url) {
+    // The URL field references http_url_to_repo / ssh_url_to_repo
+    // from the project payload. Naming them explicitly so test
+    // assertions on the JS source can verify the binding hasn't
+    // silently dropped.
+    return el('div', { class: 'section' }, [
+      el('div', { class: 'label' }, [label]),
+      el('div', { class: 'clone-field' }, [
+        el('code', null, [url]),
+        el('button', {
+          class: 'copy-btn',
+          onclick: function(ev) { copyToClipboard(url, ev.target); },
+        }, ['📋 Copy']),
+      ]),
+    ]);
+  }
+
+  function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(function() {
+      const original = btn.textContent;
+      btn.textContent = '✓ Copied';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1200);
+    }).catch(function() {
+      btn.textContent = '✗ failed';
+      setTimeout(function() { btn.textContent = '📋 Copy'; }, 1200);
+    });
+  }
+
+  // ── Filters ─────────────────────────────────────────────
+  function applyFilters() {
+    const q = STATE.search.toLowerCase();
+    const now = Date.now();
+    const rows = document.querySelectorAll('#tree .project');
+    for (const row of rows) {
+      const path = (row.dataset.path || '').toLowerCase();
+      const vis = row.dataset.visibility;
+      const archived = row.dataset.archived === 'true';
+      const lastIso = row.dataset.lastActivity;
+      const ageMs = lastIso ? (now - Date.parse(lastIso)) : 0;
+      const stale = ageMs > ONE_YEAR_MS;
+
+      let keep = true;
+      if (q && !path.includes(q)) keep = false;
+      if (!STATE.showArchived && archived) keep = false;
+      if (STATE.showStaleOnly && !stale) keep = false;
+      if (!STATE.visibility[vis]) keep = false;
+
+      row.style.display = keep ? '' : 'none';
+    }
+    // Hide empty groups whose children are all filtered out.
+    const groups = document.querySelectorAll('#tree .group');
+    for (const g of groups) {
+      const visibleProjects = g.querySelectorAll('.project:not([style*="display: none"])');
+      g.style.display = visibleProjects.length > 0 ? '' : 'none';
+    }
+  }
+
+  // ── Snapshot footer ─────────────────────────────────────
+  function renderFooter() {
+    const f = document.getElementById('snapshot-footer');
+    if (!ORG.snapshot) {
+      f.textContent = '(no snapshot recorded — was this rendered from an empty cache?)';
+      return;
+    }
+    const totalProjects =
+      countProjects(ORG.groups) + (ORG.personal_namespace_projects || []).length;
+    const totalGroups = countGroups(ORG.groups);
+    f.textContent =
+      'Snapshot: ' + ORG.snapshot.completed_at +
+      ' · ' + ORG.snapshot.gitlab_url +
+      ' · ' + totalProjects + ' projects across ' + totalGroups + ' groups';
+  }
+  function countProjects(groups) {
+    return groups.reduce(function(n, g) {
+      return n + g.projects.length + countProjects(g.children_groups);
+    }, 0);
+  }
+  function countGroups(groups) {
+    return groups.reduce(function(n, g) {
+      return n + 1 + countGroups(g.children_groups);
+    }, 0);
+  }
+
+  // ── Wire up ─────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function() {
+    renderTree();
+    renderFooter();
+
+    document.getElementById('search').addEventListener('input', function(ev) {
+      STATE.search = ev.target.value;
+      applyFilters();
+    });
+    document.getElementById('show-archived').addEventListener('change', function(ev) {
+      STATE.showArchived = ev.target.checked;
+      applyFilters();
+    });
+    document.getElementById('show-stale-only').addEventListener('change', function(ev) {
+      STATE.showStaleOnly = ev.target.checked;
+      applyFilters();
+    });
+    const chips = document.querySelectorAll('.vis-chip');
+    for (const chip of chips) {
+      chip.addEventListener('click', function() {
+        const v = chip.dataset.vis;
+        STATE.visibility[v] = !STATE.visibility[v];
+        chip.classList.toggle('active');
+        applyFilters();
+      });
+    }
+  });
+})();
+"""
+
 _HTML_HEAD = """\
 <!DOCTYPE html>
 <html lang="en">
@@ -224,7 +500,7 @@ _HTML_BODY_TEMPLATE = """\
 </main>
 <div class="snapshot-footer" id="snapshot-footer"></div>
 <script type="application/json" id="org-data">{data_json}</script>
-<script>/* JS lands in Task 3 */</script>
+<script>{js}</script>
 </body>
 </html>
 """
@@ -233,4 +509,6 @@ _HTML_BODY_TEMPLATE = """\
 def render(tree: Tree) -> str:
     """Return a complete self-contained HTML string for the org browser."""
     data_json = render_json.render(tree).rstrip()
-    return _HTML_HEAD.format(css=_CSS) + _HTML_BODY_TEMPLATE.format(data_json=data_json)
+    return _HTML_HEAD.format(css=_CSS) + _HTML_BODY_TEMPLATE.format(
+        data_json=data_json, js=_JS
+    )
