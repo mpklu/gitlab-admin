@@ -2,7 +2,7 @@
 title: browse command — org map of the GitLab instance
 type: concept
 area: gitlab-admin
-updated: 2026-05-19
+updated: 2026-05-20
 status: thin
 load_bearing: true
 ---
@@ -65,6 +65,47 @@ Other HTTP errors (auth 401, server 5xx, network timeouts) still abort
 the whole sync via `SyncFailed` — they indicate problems where partial
 data isn't safe.
 
+### HTML report (Layout B)
+
+`--html PATH` writes a single self-contained `.html` file: inline CSS,
+inline JS, and a JSON data island holding the same payload as `--json`.
+No external assets, no CDN, no fonts. Email it, drop it on a shared
+drive, AirDrop it — it works offline.
+
+Layout B: lean collapsible tree on the left; detail panel on the right
+that populates when a project row is clicked. Detail-panel fields:
+
+- Name and breadcrumb path
+- Owner (derived per the rules above) and a visibility pill
+- Last-updated date and default branch
+- HTTPS clone URL with a `📋 Copy` button (writes to clipboard via
+  `navigator.clipboard.writeText`)
+- SSH clone URL with a `📋 Copy` button
+- Maintainers (de-duplicated, Owner or Maintainer access only,
+  expired members excluded)
+- "↗ Open in GitLab" link to the project's `web_url`
+
+Client-side filters in the top toolbar:
+
+- **Search** matches against project path-with-namespace (case-insensitive).
+- **Archived** checkbox — hidden by default; tick to include archived projects.
+- **Stale >1y** checkbox — show only projects with no activity in the last year.
+- **Visibility chips** — three toggleable chips (`private` / `internal` /
+  `public`). Clicking a chip hides that visibility class.
+
+Empty groups (all children filtered out) collapse to nothing so the
+tree stays scannable.
+
+The JS is vanilla — no framework, no external scripts. It builds the
+DOM with `createElement` + `replaceChildren` and never uses
+`innerHTML`, so project names / descriptions / member names cannot be
+interpreted as HTML even though they ultimately come from a trusted
+admin source. Tests assert this contract.
+
+Structural HTML and JS-presence tests run in CI; behaviour is verified
+by manual browser smoke since adopting a headless-browser test dep
+isn't justified for a single self-contained file.
+
 ### Shared-project deduplication
 
 GitLab projects can be *shared* with multiple groups (common pattern:
@@ -105,17 +146,18 @@ The displayed "Owner" for a project is derived, not stored:
 The full member list ships with the model so the squish is a display
 convenience, never a truth claim.
 
-## CLI shape (this plan)
+## CLI shape
 
 ```text
-python -m gitlab_admin.browse                        # text tree from cache
-python -m gitlab_admin.browse --refresh              # re-fetch then text tree
-python -m gitlab_admin.browse --json                 # JSON to stdout
-python -m gitlab_admin.browse --group platform/services
-python -m gitlab_admin.browse --owner kun.lu
-python -m gitlab_admin.browse --stale-days 365
-python -m gitlab_admin.browse --no-archived
-python -m gitlab_admin.browse --cache-path ./snapshot.sqlite
+./run.sh                                      # text tree from cache
+./run.sh --refresh                            # re-fetch then text tree
+./run.sh --json                               # JSON to stdout
+./run.sh --html out.html                      # write Layout B HTML report
+./run.sh --group platform/services
+./run.sh --owner kun.lu
+./run.sh --stale-days 365
+./run.sh --no-archived
+./run.sh --cache-path ./snapshot.sqlite
 ```
 
 Exit codes: 0 success, 1 missing/stale cache, 2 network error during

@@ -2,6 +2,28 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] feature | HTML report (Layout B)
+
+- Implemented Plan 2 of the design at
+  `docs/superpowers/specs/2026-05-19-gitlab-org-browser-design.md`.
+- Added: `gitlab_admin/browse/render_html.py` — pure renderer returning
+  a single self-contained HTML string with inline CSS, inline JS, and
+  a JSON data island.
+- Updated: `gitlab_admin/browse/__main__.py` — replaced the `--html`
+  stub with a writer that emits the report to the given path.
+- Updated: `concepts/gitlab-admin/browse-command.md` adds an
+  HTML report (Layout B) section and refreshes the CLI shape table
+  to use `./run.sh`.
+- Security: JS builds DOM exclusively via `createElement` and
+  `replaceChildren` — never `innerHTML`. Tests enforce.
+- Smoke-tested in a browser: tree renders, projects clickable, detail
+  panel populates with clone URLs + working Copy buttons, search and
+  three filter controls work, empty groups collapse.
+- Tests: structural HTML/JS checks via stdlib `html.parser` + regex,
+  plus a CLI roundtrip writing to a tmp path and an I/O-error case.
+  No headless-browser dep added.
+
+
 ## [2026-05-20] enhancement | run.sh canonical entry + standardize on uv
 
 - Added `run.sh` at the project root as the canonical CLI invocation.
