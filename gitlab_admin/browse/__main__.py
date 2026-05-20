@@ -61,6 +61,10 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _print_progress(msg: str) -> None:
+    print(f"[browse] {msg}", file=sys.stderr, flush=True)
+
+
 def _refresh(args, cache_path: Path) -> int:
     try:
         gl = client.get_client(url=args.gitlab_url, token=args.gitlab_token)
@@ -68,7 +72,12 @@ def _refresh(args, cache_path: Path) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_AUTH
     try:
-        fetch.sync_all(gl, cache_path=cache_path, tool_version=__version__)
+        fetch.sync_all(
+            gl,
+            cache_path=cache_path,
+            tool_version=__version__,
+            progress=_print_progress,
+        )
     except fetch.SyncFailed as exc:
         print(f"refresh failed: {exc}", file=sys.stderr)
         print(

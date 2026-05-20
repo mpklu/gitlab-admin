@@ -38,6 +38,15 @@ Refresh is atomic: write to a temp file in the same directory, then
 `docs/superpowers/specs/2026-05-19-gitlab-org-browser-design.md` §4 for
 the full schema.
 
+### Progress output
+
+`fetch.sync_all` accepts a `progress: Callable[[str], None]` callback,
+called as the sync advances (group N of M, per-group project/member
+counts, final commit notice). The CLI passes a stderr printer prefixed
+`[browse]`. Library callers default to a no-op so tests stay quiet.
+This exists because a real-instance refresh can take minutes against a
+hundreds-of-projects setup; without progress, the command looks hung.
+
 ### Orphan parent_id handling
 
 The GitLab API doesn't guarantee that parent groups are returned before

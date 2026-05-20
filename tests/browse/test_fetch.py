@@ -181,6 +181,38 @@ def test_sync_dedups_inherited_members_keeping_highest_access(stubbed_gitlab, tm
     assert members[0]["access_level"] == 50
 
 
+def test_sync_calls_progress_callback_with_status(stubbed_gitlab, tmp_cache):
+    """The progress callback is invoked at each major step so the CLI
+    can show live output instead of looking hung. Tests the wiring,
+    not the exact wording."""
+    _stub_groups_list(stubbed_gitlab, [_group_payload(1, "platform")])
+    _stub_group_get(stubbed_gitlab, _group_payload(1, "platform"))
+    _stub_members_all(stubbed_gitlab, "group", 1, [])
+    _stub_group_projects(stubbed_gitlab, 1, [
+        _project_payload(101, 1, "platform/auth"),
+    ])
+    _stub_project_get(stubbed_gitlab, _project_payload(101, 1, "platform/auth"))
+    _stub_members_all(stubbed_gitlab, "project", 101, [])
+
+    messages: list[str] = []
+    gl = client.get_client()
+    fetch.sync_all(
+        gl,
+        cache_path=tmp_cache,
+        tool_version="0.1.0",
+        progress=messages.append,
+    )
+
+    # Three things we depend on visually: a "listing" line at the start,
+    # a per-group line containing the group's full_path, and a final
+    # commit/done signal.
+    joined = "\n".join(messages)
+    assert "Listing groups" in joined
+    assert "platform" in joined
+    assert "[1/1]" in joined
+    assert any("Committing" in m or "Done" in m for m in messages)
+
+
 def test_sync_orphan_parent_id_becomes_top_level(stubbed_gitlab, tmp_cache):
     """If the API returns a subgroup whose parent isn't in the result
     set (admin can see the child but not the parent — rare but

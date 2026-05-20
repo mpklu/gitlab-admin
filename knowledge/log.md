@@ -2,6 +2,18 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] enhancement | progress output during `--refresh`
+
+- Symptom: real-instance refresh on a hundreds-of-projects setup
+  produced no terminal output for minutes, looking hung even though
+  it was just slow (~1000+ API round-trips).
+- Added: optional `progress: Callable[[str], None]` parameter on
+  `fetch.sync_all`. CLI passes a stderr printer prefixed `[browse]`;
+  library callers get a no-op default.
+- Messages cover: initial "Listing groups…", per-group `[N/M]` line
+  with project + member counts, final "Committing" / "Done".
+- Updated `browse-command.md` with a Progress output section.
+
 ## [2026-05-19] bugfix | fetch handles unordered + orphan groups
 
 - Symptom: first real `--refresh` against a self-hosted instance

@@ -85,10 +85,28 @@ def _write_members_deduped(conn, entity_type: str, entity_id: int, member_objs) 
         cache.write_member(conn, row)
 
 
-def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
+ProgressFn = "Callable[[str], None]"
+
+
+def _noop_progress(_msg: str) -> None:
+    pass
+
+
+def sync_all(
+    gl: gitlab.Gitlab,
+    *,
+    cache_path: Path,
+    tool_version: str,
+    progress: "ProgressFn" = _noop_progress,
+) -> None:
     """Fetch everything visible to the token and replace `cache_path`
     atomically. Raises SyncFailed on any API error; existing cache is
     not touched on failure.
+
+    `progress` is called with human-readable status strings as the sync
+    advances (group N of M, project counts, etc.). Defaults to a no-op
+    so library callers don't see anything; the CLI passes a stderr
+    printer.
     """
     started = _utcnow_iso()
     cache_path = Path(cache_path)
@@ -111,11 +129,15 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
             # We clean up case (b) below by nullifying orphan parent_ids,
             # then re-enable FK enforcement before committing.
             conn.execute("PRAGMA foreign_keys = OFF")
+            progress(f"Listing groups from {gl.url}...")
             try:
                 groups = gl.groups.list(all=True, all_available=True)
             except gitlab.exceptions.GitlabError as exc:
                 raise SyncFailed(f"failed to list groups: {exc}") from exc
-            for g in groups:
+            total_groups = len(groups)
+            progress(f"Found {total_groups} groups; walking projects + members")
+            project_total = 0
+            for i, g in enumerate(groups, start=1):
                 cache.write_group(conn, _group_row(g))
                 try:
                     group_obj = gl.groups.get(g.id)
@@ -128,6 +150,12 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
                     projects = group_obj.projects.list(all=True, include_subgroups=False)
                 except gitlab.exceptions.GitlabError as exc:
                     raise SyncFailed(f"failed to list projects for group {g.full_path}: {exc}") from exc
+                n_proj = len(projects)
+                project_total += n_proj
+                progress(
+                    f"  [{i}/{total_groups}] {g.full_path:<40} "
+                    f"({n_proj} project(s), {len(g_members)} member(s))"
+                )
                 for p in projects:
                     cache.write_project(conn, _project_row(p))
                     try:
@@ -152,10 +180,12 @@ def sync_all(gl: gitlab.Gitlab, *, cache_path: Path, tool_version: str) -> None:
                 gitlab_url=gl.url,
                 tool_version=tool_version,
             ))
+            progress(f"Committing: {total_groups} groups, {project_total} projects.")
             conn.commit()
             # Re-enable FK enforcement for any subsequent reads
             # (cache.connect() also sets this; this is belt-and-braces).
             conn.execute("PRAGMA foreign_keys = ON")
+            progress("Done.")
 
         os.replace(tmp_path, cache_path)
     except Exception:
