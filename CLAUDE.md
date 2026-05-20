@@ -149,9 +149,13 @@ from it requires updating that article in the same task.
 ## Key Commands
 
 ```bash
-pip install -e ".[dev]"            # once pyproject.toml lands
-pytest                              # run tests
+./run.sh                            # canonical CLI entry — bootstraps uv, syncs, runs browse
+./run.sh --refresh                  # re-fetch from GitLab then render
+./run.sh --json                     # JSON to stdout
+uv sync                             # install/update deps explicitly
+uv run pytest                       # run tests
 scripts/validate-articles           # validate knowledge/ frontmatter
 scripts/drift-check                 # check articles vs touched code
-python -m gitlab_admin.<command>    # run an admin command
 ```
+
+See `run.sh`'s header comment block for the full entry-point contract.

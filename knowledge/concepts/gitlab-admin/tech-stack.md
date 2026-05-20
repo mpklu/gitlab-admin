@@ -20,6 +20,11 @@ project layout, and the conventions every command follows.
 - **Cache:** stdlib `sqlite3`. No ORM.
 - **`.env` loading:** `python-dotenv` (base dep). Loaded once at CLI
   entry; shell env vars take precedence (see `concepts/gitlab/integration-model.md`).
+- **Package manager:** `uv`. `uv.lock` is committed. The canonical
+  entry point is `./run.sh`, which bootstraps `uv` if missing,
+  runs `uv sync` (idempotent), then `uv run python -m gitlab_admin.browse`.
+  Direct `python -m gitlab_admin.browse` still works once `uv sync`
+  has been run, but `./run.sh` is what teammates type.
 - **Packaging:** `pyproject.toml` defining the `gitlab_admin` package
   with dev extras. Installed editable for local work (`pip install -e ".[dev]"`).
   No published wheels; not a PyPI release.

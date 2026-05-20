@@ -2,6 +2,23 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-20] enhancement | run.sh canonical entry + standardize on uv
+
+- Added `run.sh` at the project root as the canonical CLI invocation.
+  It checks for `uv` (installs via Astral's official one-liner if
+  missing), runs `uv sync --quiet`, and `exec`s
+  `uv run python -m gitlab_admin.browse` with all forwarded args.
+  Strict mode (`set -euo pipefail`); helper script log lines go to
+  stderr so they don't pollute `--json` stdout output. Header
+  comment block documents usage, examples, env vars, exit codes.
+- Committed `uv.lock`. `CLAUDE.md` Conventions section already
+  declares uv as the required Python package manager; run.sh and
+  the lockfile make that real.
+- Updated `concepts/gitlab-admin/tech-stack.md` to name uv + run.sh
+  as the canonical install + entry.
+- Updated `CLAUDE.md` Key Commands to use `./run.sh` and `uv` instead
+  of pip / direct `python -m`.
+
 ## [2026-05-20] bugfix | per-entity 403 is recoverable
 
 - Symptom: real-instance refresh died at group 62/63 with
