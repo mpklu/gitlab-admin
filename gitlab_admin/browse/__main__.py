@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from dotenv import load_dotenv
+
 from gitlab_admin import __version__, client
 from . import cache, fetch, model, render_text
 
@@ -34,6 +36,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    help=f"SQLite cache path (default: {cache.default_cache_path()}).")
     p.add_argument("--gitlab-url", help="Override GITLAB_URL for this invocation.")
     p.add_argument("--gitlab-token", help="Override GITLAB_TOKEN for this invocation.")
+    p.add_argument("--env-file", type=Path, metavar="PATH",
+                   help="Load env vars from this .env file before reading the "
+                        "environment. Default: walk up from CWD looking for `.env`. "
+                        "Shell env vars always win over file values.")
 
     # Output modes (mutually exclusive)
     modes = p.add_mutually_exclusive_group()
@@ -94,6 +100,13 @@ def _ensure_cache(cache_path: Path) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    # Load .env early so subsequent reads of GITLAB_URL/GITLAB_TOKEN see it.
+    # override=False — actual shell env vars take precedence over file values.
+    if args.env_file is not None:
+        load_dotenv(args.env_file, override=False)
+    else:
+        load_dotenv(override=False)
 
     if args.html is not None or args.interactive:
         print(

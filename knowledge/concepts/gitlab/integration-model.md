@@ -17,8 +17,13 @@ inherits.
   runtime via the `GITLAB_URL` environment variable.
 - **Auth:** a personal access token (PAT) with admin scope, supplied via
   the `GITLAB_TOKEN` environment variable. No OAuth, no SSO flow, no
-  token file on disk. Each operator uses their own token so audit logs
-  attribute changes correctly.
+  application-specific credential store. Each operator uses their own
+  token so audit logs attribute changes correctly.
+- **`.env` loading:** CLI entry points call `dotenv.load_dotenv()` once
+  at startup. By default it walks up from the current working directory
+  looking for a `.env` file; `--env-file PATH` overrides that lookup.
+  Real shell env vars always win over `.env` file values
+  (`override=False`). `.env` is gitignored.
 - **Client:** `python-gitlab`, constructed by `gitlab_admin.client.get_client()`.
   All commands go through this factory; no command builds its own client.
 
@@ -51,3 +56,5 @@ default-dry-run convention. Each is a real change in posture.
 - `GITLAB_URL` and `GITLAB_TOKEN` are the only required env vars.
 - `gitlab_admin/client.py` raises a clear error if either is missing.
 - Missing-token errors print the env-var name, not a stack trace.
+- `dotenv.load_dotenv(override=False)` runs at CLI entry; shell env
+  vars never get clobbered by `.env` values.

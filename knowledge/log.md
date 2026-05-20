@@ -2,6 +2,18 @@
 
 Append-only chronological log of significant changes to this project. Each entry records what changed, why, and which articles were touched. Read sequentially, this log tells the story of the project's decisions.
 
+## [2026-05-19] enhancement | dotenv loading at CLI entry
+
+- Added `python-dotenv` as a base dep; `gitlab_admin/browse/__main__.py`
+  now calls `load_dotenv(override=False)` at startup. `.env` files are
+  picked up by walking up from CWD by default; `--env-file PATH`
+  overrides the lookup. Shell env vars always win.
+- Updated `concepts/gitlab/integration-model.md` and
+  `concepts/gitlab-admin/tech-stack.md` to document the loader and
+  precedence rule.
+- Tests added: `test_env_file_populates_credentials_when_shell_lacks_them`,
+  `test_env_file_does_not_override_shell_env`.
+
 ## [2026-05-19] feature | gitlab-admin browse — foundation
 
 - Implemented the `browse` foundation per Plan 1 of the design at

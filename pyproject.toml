@@ -9,6 +9,7 @@ description = "Toolkit for administering a self-hosted GitLab instance"
 requires-python = ">=3.11"
 dependencies = [
     "python-gitlab>=4.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]

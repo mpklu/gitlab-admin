@@ -18,6 +18,8 @@ project layout, and the conventions every command follows.
   style the team will write.
 - **Test runner:** `pytest`. HTTP stubbing via `responses` (dev dep).
 - **Cache:** stdlib `sqlite3`. No ORM.
+- **`.env` loading:** `python-dotenv` (base dep). Loaded once at CLI
+  entry; shell env vars take precedence (see `concepts/gitlab/integration-model.md`).
 - **Packaging:** `pyproject.toml` defining the `gitlab_admin` package
   with dev extras. Installed editable for local work (`pip install -e ".[dev]"`).
   No published wheels; not a PyPI release.
