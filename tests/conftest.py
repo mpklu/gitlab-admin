@@ -16,3 +16,8 @@ def initialized_conn(tmp_cache: Path) -> sqlite3.Connection:
     with cache.connect(tmp_cache) as conn:
         cache.init_schema(conn)
         yield conn
+
+
+@pytest.fixture
+def fixture_db() -> Path:
+    return Path(__file__).parent / "fixtures" / "snapshot.sqlite"
